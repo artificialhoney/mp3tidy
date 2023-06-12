@@ -1,6 +1,6 @@
 import { resolve, extname, basename, join, dirname } from 'path'
 import { existsSync } from 'fs'
-import { readdir, mkdir, copyFile } from 'fs/promises'
+import { readdir, mkdir, copyFile, writeFile } from 'fs/promises'
 import minimist from 'minimist'
 import NodeID3 from 'node-id3'
 import axios from 'axios'
@@ -56,7 +56,7 @@ const getFiles = async function* (dir: string): AsyncGenerator<string> {
   }
 }
 
-const run = async (rootDir: string, outDir: string, key: string, secret: string) => {
+const tidy = async (rootDir: string, outDir: string, key: string, secret: string) => {
   rootDir = resolve(rootDir)
   outDir = resolve(outDir)
   console.log('Starting tidy')
@@ -143,6 +143,50 @@ const run = async (rootDir: string, outDir: string, key: string, secret: string)
   }
 }
 
+const collect = async (rootDir: string, outFile: string, key: string, secret: string) => {
+  rootDir = resolve(rootDir)
+  console.log('Starting collect')
+  const videos = []
+  for await (const f of getFiles(rootDir)) {
+    if (extname(f).toLowerCase() !== '.mp3') {
+      continue
+    }
+
+    console.log('Reading ID3 tags', f)
+    const tags = await NodeID3.Promise.read(f)
+
+    if (!tags.fileUrl) {
+      console.log('No file URL found, Skipping')
+      continue
+    }
+
+    const match = tags.fileUrl.match(/.+\/(\d+).?/)
+    const url = `https://api.discogs.com/releases/${match![1]}`
+    console.log('Fetching from Discogs:', url)
+    const response = await axios.get<any, { data: any }>(url, {
+      params: {
+        key,
+        secret,
+      },
+    })
+
+    response.data.videos && videos.push(...response.data.videos.map((v: any) => v.uri))
+
+    await new Promise((f) => setTimeout(f, 2500))
+  }
+
+  console.log('Writing collected video list:', outFile)
+
+  await writeFile(outFile, videos.join('\n'))
+}
+
 const args = minimist(process.argv.slice(2))
 
-run(args._[0], args._[1], args.apiKey, args.apiSecret)
+if (args._[0] === 'collect') {
+  collect(args._[1], args._[2], args.apiKey, args.apiSecret)
+} else if (args._[0] === 'tidy' || args._.length === 2) {
+  const index = args._[0] === 'tidy' ? 1 : 0
+  tidy(args._[index], args._[index + 1], args.apiKey, args.apiSecret)
+} else {
+  console.log('Nothing to do. Exiting.')
+}
