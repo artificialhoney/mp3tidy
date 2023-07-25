@@ -73,8 +73,8 @@ const tidy = async (rootDir: string, outDir: string, key: string, secret: string
       'https://api.discogs.com/database/search',
       {
         params: {
-          q: stripped,
           key,
+          q: stripped,
           secret,
           type: 'release',
         },
@@ -91,12 +91,12 @@ const tidy = async (rootDir: string, outDir: string, key: string, secret: string
     if (data.results.length !== 0) {
       await new Promise((f) => setTimeout(f, 2500))
       const response = await axios.get(data.results[0].resource_url)
-      const { artists, genres, year, tracklist } = response.data
+      const { artists, genres, tracklist, year } = response.data
       const artist = artists.map((a: any) => a.name).join(', ')
       const tracks = tracklist
         .map((t: any) => ({
-          title: t.title,
           similarity: similarity(t.title.toLowerCase(), stripped.replace(artist, '').toLowerCase()),
+          title: t.title,
         }))
         .sort((a: any, b: any) => b.similarity - a.similarity)
       const title = tracks[0].title
@@ -109,10 +109,10 @@ const tidy = async (rootDir: string, outDir: string, key: string, secret: string
 
       const tags: NodeID3.Tags = {
         artist,
+        fileUrl,
+        genre,
         title,
         year: year.toString(),
-        genre,
-        fileUrl,
       }
 
       if (data.results[0].cover_image) {
@@ -122,12 +122,12 @@ const tidy = async (rootDir: string, outDir: string, key: string, secret: string
             return Buffer.from(response.data, 'base64')
           })
         tags.image = {
+          description: artist + ' - ' + title,
+          imageBuffer,
           mime: 'image/jpeg',
           type: {
             id: NodeID3.TagConstants.AttachedPicture.PictureType.FRONT_COVER,
           },
-          description: artist + ' - ' + title,
-          imageBuffer,
         }
       }
 
